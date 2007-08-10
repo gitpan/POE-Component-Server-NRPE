@@ -1,0 +1,95 @@
+NAME
+    POE::Component::Server::NRPE - A POE Component implementation of NRPE
+    Daemon.
+
+SYNOPSIS
+      use strict;
+      use POE;
+      use POE::Component::Server::NRPE;
+
+      my $port = 5666;
+      
+  my $nrped = POE::Component::Server::NRPE->spawn(
+            port => $port;
+      );
+
+      $nrped->add_command( command => meep, program => \&_meep );
+
+      $poe_kernel->run();
+      exit 0;
+
+      sub _meep {
+        print STDOUT "OK meep\n";
+        return 0;
+      }
+
+DESCRIPTION
+    POE::Component::Server::NRPE is a POE component that implements an NRPE
+    (Nagios Remote Plugin Executor) daemon supporting both version 1 and
+    version 2 protocols. It also supports SSL encryption using Net::SSLeay
+    and a hacked version of POE::Component::SSLify.
+
+CONSTRUCTOR
+    spawn
+        Takes a number of parameters, which are optional:
+
+          'address', bind the listening socket to a particular address, default is IN_ADDR_ANY;
+          'port', specify a port to listen on, default is 5666;
+          'version', the NRPE protocol version to use, default is 2;
+          'usessl', set this to 0 to disable SSL support with NRPE Version 2, default is 1;
+          'time_out', specify a time out in seconds for socket connections and commands, default is 10;
+
+        Returns a POE::Component::Server::NRPE object.
+
+METHODS
+    session_id
+        Returns the POE::Session ID of the component.
+
+    shutdown
+        Terminates the component. Shuts down the listener and disconnects
+        connected clients.
+
+    getsockname
+        Access to the POE::Wheel::SocketFactory method of the underlying
+        listening socket.
+
+    add_command
+        This will add a command that can be run. Takes a number of
+        parameters:
+
+          'command', a label for the command. This is what clients will request, mandatory;
+          'program', the program to run. Can be a coderef, mandatory;
+          'args', the command line arguments to pass to the above program, must be an arrayref;
+
+        Returns 1 if successful, undef otherwise.
+
+    del_command
+        Removes a previously defined command. Takes one argument, the
+        previously defined label to remove.
+
+        Returns 1 if successful, undef otherwise.
+
+CAVEATS
+    Due to problems with Net::SSLeay mixing of client and server SSL is not
+    encouraged unless fork() is employed.
+
+TODO
+    Add the ability to have event handlers triggered to other POE sessions
+    for commands.
+
+    Add a logging capability.
+
+AUTHOR
+    Chris "BinGOs" Williams <chris@bingosnet.co.uk>
+
+    This module uses code derived from
+    <http://www.stic-online.de/stic/html/nrpe-generic.html> Copyright (C)
+    2006, 2007 STIC GmbH, http://www.stic-online.de
+
+SEE ALSO
+    POE
+
+    POE::Component::SSLify
+
+    <http://www.nagios.org/>
+
