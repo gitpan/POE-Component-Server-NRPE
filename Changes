@@ -1,5 +1,9 @@
 POE::Component::Server::NRPE - Changelog
 ========================================
 
-0.01	<Date>
+0.02	Fri Aug 10 15:48:59 BST 2007
+	- Forgot to include POE::Component::Client::NRPE as a prereq.
+	- Documented access controls.
+
+0.01	Fri Aug 10 15:36:59 BST 2007
 	- Initial CPAN release

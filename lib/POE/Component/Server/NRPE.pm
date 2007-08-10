@@ -8,7 +8,7 @@ use POE qw(Wheel::SocketFactory Wheel::ReadWrite Wheel::Run Filter::Stream Filte
 use POE::Component::Server::NRPE::SSLify qw( Server_SSLify SSLify_Initialise );
 use vars qw($VERSION);
 
-$VERSION='0.01';
+$VERSION='0.02';
 
 sub spawn {
   my $package = shift;
@@ -470,6 +470,8 @@ POE::Component::Server::NRPE - A POE Component implementation of NRPE Daemon.
 POE::Component::Server::NRPE is a L<POE> component that implements an NRPE (Nagios Remote Plugin Executor)
 daemon supporting both version 1 and version 2 protocols. It also supports SSL encryption using L<Net::SSLeay> and a hacked version of L<POE::Component::SSLify>.
 
+Access is controlled by specifying L<Net::Netmask> objects to the constructor. The default behaviour is to allow access from any IP address.
+
 =head1 CONSTRUCTOR
 
 =over
@@ -483,6 +485,7 @@ Takes a number of parameters, which are optional:
   'version', the NRPE protocol version to use, default is 2;
   'usessl', set this to 0 to disable SSL support with NRPE Version 2, default is 1;
   'time_out', specify a time out in seconds for socket connections and commands, default is 10;
+  'access', an arrayref of Net::Netmask objects that will be granted access, default is 'any';
 
 Returns a POE::Component::Server::NRPE object.
 

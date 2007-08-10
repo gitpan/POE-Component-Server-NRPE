@@ -10,4 +10,5 @@ requires 'Socket' => 0;
 requires 'Net::Netmask' => 1.9015;
 requires 'Net::SSLeay' => 1.30;
 requires 'POE'    => 0.38;
+requires 'POE::Component::Client::NRPE' => 0.04;
 WriteAll();
