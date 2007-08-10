@@ -8,7 +8,7 @@ use POE qw(Wheel::SocketFactory Wheel::ReadWrite Wheel::Run Filter::Stream Filte
 use POE::Component::Server::NRPE::SSLify qw( Server_SSLify SSLify_Initialise );
 use vars qw($VERSION);
 
-$VERSION='0.02';
+$VERSION='0.03';
 
 sub spawn {
   my $package = shift;

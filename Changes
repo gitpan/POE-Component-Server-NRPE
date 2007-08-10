@@ -1,6 +1,10 @@
 POE::Component::Server::NRPE - Changelog
 ========================================
 
+0.03	Fri Aug 10 17:34:55 BST 2007
+	- Got the server working with the 'proper' check_nrpe program
+	  whilst doing SSL. \o/
+
 0.02	Fri Aug 10 15:48:59 BST 2007
 	- Forgot to include POE::Component::Client::NRPE as a prereq.
 	- Documented access controls.

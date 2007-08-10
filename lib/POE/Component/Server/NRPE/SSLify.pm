@@ -109,7 +109,8 @@ sub Server_SSLify {
 
 sub SSLify_Initialise {
 	my $data = "-----BEGIN DH PARAMETERS-----\nMEYCQQD9eJtH5rywhI/PGD+RaFvEptXwGrqtjm4Jw+GSniG72OLThcOcb29iEIcp\nXgrpPtClVGHYs4lNZbpwFz1ufNnjAgEC\n-----END DH PARAMETERS-----\n";
-	$ctx = Net::SSLeay::CTX_tlsv1_new() or die_now( "Failed to create SSL_CTX $!" );
+	#$ctx = Net::SSLeay::CTX_tlsv1_new() or die_now( "Failed to create SSL_CTX $!" );
+	$ctx = Net::SSLeay::CTX_new() or die_now( "Failed to create SSL_CTX $!" );
         Net::SSLeay::CTX_set_cipher_list( $ctx, "ADH") or die_now( " Failed to set cipher list $!" );
         my $bio = Net::SSLeay::BIO_new( Net::SSLeay::BIO_s_mem() ) or die_now( "Failed to create BIO: $!" );
         my $retval = Net::SSLeay::BIO_write( $bio, $data );

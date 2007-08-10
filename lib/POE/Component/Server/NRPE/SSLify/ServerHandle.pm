@@ -26,7 +26,7 @@ sub TIEHANDLE {
 
 	Net::SSLeay::set_fd( $ssl, $fileno );
 
-	my $err = Net::SSLeay::accept( $ssl ) and die_if_ssl_error( 'ssl accept' );
+	my $err = Net::SSLeay::accept( $ssl ) and die_if_ssl_error( "ssl accept" );
 
 	$Filenum_Object{ $fileno } = {
 		ssl    => $ssl,
