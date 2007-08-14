@@ -6,9 +6,10 @@ use Carp;
 use Net::Netmask;
 use POE qw(Wheel::SocketFactory Wheel::ReadWrite Wheel::Run Filter::Stream Filter::Line);
 use POE::Component::Server::NRPE::SSLify qw( Server_SSLify SSLify_Initialise );
+use POE::Component::Server::NRPE::Constants;
 use vars qw($VERSION);
 
-$VERSION='0.03';
+$VERSION='0.04';
 
 sub spawn {
   my $package = shift;
@@ -42,6 +43,10 @@ sub spawn {
 				_wheel_close
 				_wheel_error
 				_wheel_alarm
+				_session_alarm
+				register_command
+				unregister_command
+				return_result
 		)],
 	],
 	heap => $self,
@@ -78,7 +83,7 @@ sub add_command {
   }
   $args{lc $_} = delete $args{$_} for keys %args;
   return unless $args{command} and $args{program};
-  return if defined $self->{commands}->{ $args{command} };
+  return if defined $self->{commands}->{ $args{command} } or defined $self->{sess_cmds}->{ $args{command} };
   $args{args} = [ $args{args} ] if ref $args{args} ne 'ARRAY';
   $self->{commands}->{ delete $args{command} } = \%args;
   return 1;
@@ -90,6 +95,84 @@ sub del_command {
   return unless defined $self->{commands}->{ $command };
   delete $self->{commands}->{ $command };
   return 1;
+}
+
+sub register_command {
+  my ($kernel,$self,$sender) = @_[KERNEL,OBJECT,SENDER];
+  my $sender_id = $sender->ID();
+  my %args;
+  if ( ref $_[ARG0] eq 'HASH' ) {
+    %args = %{ $_[ARG0] };
+  }
+  elsif ( ref $_[ARG0] eq 'ARRAY' ) {
+    %args = @{ $_[ARG0] };
+  }
+  else {
+    %args = @_[ARG0..$#_];
+  }
+  $args{lc $_} = delete $args{$_} for keys %args;
+  unless ( $args{command} ) {
+    warn "No 'command' argument supplied\n";
+    return;
+  }
+  unless ( $args{event} ) {
+    warn "No 'event' argument supplied\n";
+    return;
+  }
+  if ( defined $self->{commands}->{ $args{command} } ) {
+    warn "There is an internal command called '$args{command}' already\n";
+    return;
+  }
+  if ( defined $self->{sess_cmds}->{ $args{command} } ) {
+    warn "There is a session command called '$args{command}' already\n";
+    return;
+  }
+  $self->{sess_cmds}->{ $args{command} } = { session => $sender_id, event => $args{event} };
+  $kernel->refcount_increment( $sender_id, __PACKAGE__ );
+  return;
+}
+
+sub unregister_command {
+  my ($kernel,$self,$sender) = @_[KERNEL,OBJECT,SENDER];
+  my $sender_id = $sender->ID();
+  my %args;
+  if ( ref $_[ARG0] eq 'HASH' ) {
+    %args = %{ $_[ARG0] };
+  }
+  elsif ( ref $_[ARG0] eq 'ARRAY' ) {
+    %args = @{ $_[ARG0] };
+  }
+  else {
+    %args = @_[ARG0..$#_];
+  }
+  $args{lc $_} = delete $args{$_} for keys %args;
+  unless ( $args{command} ) {
+    warn "No 'command' argument supplied\n";
+    return;
+  }
+  unless ( defined $self->{sess_cmds}->{ $args{command} } ) {
+    warn "There isn't a session command called '$args{command}'\n";
+    return;
+  }
+  unless ( $self->{sess_cmds}->{ $args{command} }->{session} eq $sender_id ) {
+    warn "Session '$sender_id' isn't the registered owner of '$args{command}'\n";
+    return;
+  }
+  delete $self->{sess_cmds}->{ $args{command} };
+  $kernel->refcount_decrement( $sender_id, __PACKAGE__ );
+  return;
+}
+
+sub return_result {
+  my ($kernel,$self,$sender,$id,$status,$output) = @_[KERNEL,OBJECT,SENDER,ARG0..ARG2];
+  my $sender_id = $sender->ID();
+  return unless $id and defined $self->{clients}->{ $id };
+  $kernel->alarm_remove( $self->{clients}->{ $id }->{sess_alarm} );
+  return unless $self->{clients}->{ $id }->{session} and $self->{clients}->{ $id }->{session} eq $sender_id;
+  $output = 'NRPE: Unable to read output' unless $output;
+  $status = NRPE_STATE_UNKNOWN unless $status or $status =~ /^\d+$/ or ( $status >= 0 or $status <= 3 );
+  $self->_send_response( $id, $status, $output );
+  return;
 }
 
 sub _conn_exists {
@@ -156,6 +239,8 @@ sub _shutdown {
   delete $self->{clients};
   delete $self->{wheels};
   delete $self->{pids};
+  $kernel->refcount_decrement( $_, __PACKAGE__ ) for 
+	map { $self->{sess_cmds}->{$_}->{session} } keys %{ $self->{sess_cmds} };
   $kernel->alarm_remove_all();
   $kernel->alias_remove( $_ ) for $kernel->alias_list();
   $kernel->refcount_decrement( $self->{session_id} => __PACKAGE__ ) unless $self->{alias};
@@ -245,28 +330,35 @@ sub _conn_input {
     return;
   }
   if ( $data eq '_NRPE_CHECK' ) {
-	$self->_send_response( $id, 0, $self->{verstring} );
-	return;
+     $self->_send_response( $id, NRPE_STATE_OK, $self->{verstring} );
+    return;
   }
-  unless ( defined $self->{commands}->{ $data } ) {
-	$self->_send_response( $id, 2, sprintf("NRPE: Command '%s' not defined", $data ) );
-	return;
-  }
-  my $wheel = POE::Wheel::Run->new(
+  if ( defined $self->{commands}->{ $data } ) {
+    my $wheel = POE::Wheel::Run->new(
 	Program     => $self->{commands}->{ $data }->{program},
 	ProgramArgs => $self->{commands}->{ $data }->{args},
 	StdoutEvent => '_stdout',
 	CloseEvent  => '_wheel_close',
 	ErrorEvent  => '_wheel_error',
-  );
-  my $wheel_id = $wheel->ID();
-  my $wheel_pid = $wheel->PID();
-  $self->{clients}->{ $id }->{cmd_id} = $wheel_id;
-  $self->{clients}->{ $id }->{cmd_pid} = $wheel_pid;
-  $self->{wheels}->{ $wheel_id } = { wheel => $wheel, pid => $wheel_pid, client => $id };
-  $self->{pids}->{ $wheel_pid } = { wheel_id => $wheel_id, client => $id };
-  $kernel->sig_child( $wheel_pid, '_sig_child' );
-  $self->{pids}->{ $wheel_pid }->{alarm_id} = $kernel->delay_set( '_wheel_alarm', $self->{time_out} || 60, $wheel_pid, $wheel_id );
+    );
+    my $wheel_id = $wheel->ID();
+    my $wheel_pid = $wheel->PID();
+    $self->{clients}->{ $id }->{cmd_id} = $wheel_id;
+    $self->{clients}->{ $id }->{cmd_pid} = $wheel_pid;
+    $self->{wheels}->{ $wheel_id } = { wheel => $wheel, pid => $wheel_pid, client => $id };
+    $self->{pids}->{ $wheel_pid } = { wheel_id => $wheel_id, client => $id };
+    $kernel->sig_child( $wheel_pid, '_sig_child' );
+    $self->{pids}->{ $wheel_pid }->{alarm_id} = $kernel->delay_set( '_wheel_alarm', $self->{time_out} || 60, $wheel_pid, $wheel_id );
+    return;
+  }
+  if ( defined $self->{sess_cmds}->{ $data } ) {
+    my $rec = $self->{sess_cmds}->{ $data };
+    $kernel->post( $rec->{session}, $rec->{event}, $id, $rec->{context} );
+    $self->{clients}->{ $id }->{sess_alarm} = $kernel->delay_set( '_session_alarm', $self->{time_out} || 60, $id, $rec->{session} );
+    $self->{clients}->{ $id }->{session} = $rec->{session};
+    return;
+  }
+  $self->_send_response( $id, NRPE_STATE_CRITICAL, sprintf("NRPE: Command '%s' not defined", $data ) );
   return;
 }
 
@@ -294,6 +386,12 @@ sub _wheel_alarm {
   my ($self,$wheel_pid,$wheel_id) = @_[OBJECT,ARG0,ARG1];
   $self->{pids}->{ $wheel_pid }->{timed_out} = sprintf("NRPE: Command timed out after %d seconds", $self->{time_out} || 60 );
   $self->{wheels}->{ $wheel_id }->{wheel}->kill(9);
+  return;
+}
+
+sub _session_alarm {
+  my ($self,$id,$session_id) = @_[OBJECT,ARG0,ARG1];
+  $self->_send_response( $id, NRPE_STATE_CRITICAL, sprintf("NRPE: Command timed out after %d seconds", $self->{time_out} || 60 ) );
   return;
 }
 
@@ -339,7 +437,7 @@ sub _sig_child {
 	$output = 'NRPE: Unable to read output';
     }
     $output = $pid->{timed_out} if $pid->{timed_out};
-    $return = 3 if $status < 0 or $status > 3;
+    $return = NRPE_STATE_UNKNOWN if $status < 0 or $status > 3;
     $self->_send_response( $pid->{client}, $return, $output );
   }
   return $kernel->sig_handled();
@@ -525,13 +623,57 @@ Returns 1 if successful, undef otherwise.
 
 =back
 
+=head1 INPUT EVENTS
+
+These are events from other POE sessions that our component will handle:
+
+=over
+
+=item register_command
+
+This will register the sending session with given command. Takes a number of parameters:
+
+   'command', a label for the command. This is what clients will request, mandatory;
+   'event', the name of the event in the registering session that will be triggered, mandatory;
+   'context', a scalar containing any reference data that your session demands;
+
+The component will increment the refcount of the calling session to make sure it hangs around for events.
+Therefore, you should use either C<unregister_command> or C<shutdown> to terminate registered sessions.
+
+Whenever clients request the given command, the component will send the indicated event to the registering session with the following parameters:
+
+  ARG0, a unique id of the client;
+  ARG1, the context ( if any );
+
+Your session should then do any necessary processing and use C<return_result> event to return the status and output to the component. 
+
+=item unregister_command
+
+This will unregister the sending session with the given command. Takes one parameter:
+
+   'command', a previously registered command, mandatory;
+
+=item return_result
+
+After processing a command your session must use this event to return the status and output to the component. Takes three values:
+
+   The unique id of the client;
+   The status which should be 0, 1 , 2 or 3, indicating OK, WARNING, CRITICAL or UNKNOWN, respectively;
+   A string with some meaning output;
+
+   $kernel->post( 'nrped', 'return_result', $id, 0, 'OK Everything was cool' );
+
+=item shutdown
+
+Terminates the component. Shuts down the listener and disconnects connected clients.
+
+=back
+
 =head1 CAVEATS
 
 Due to problems with L<Net::SSLeay> mixing of client and server SSL is not encouraged unless fork() is employed.
 
 =head1 TODO
-
-Add the ability to have event handlers triggered to other POE sessions for commands.
 
 Add a logging capability.
 

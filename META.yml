@@ -21,4 +21,4 @@ requires:
   POE: 0.38
   POE::Component::Client::NRPE: 0.04
   Socket: 0
-version: 0.03
+version: 0.04
