@@ -1,8 +1,10 @@
-use Test::More tests => 5;
+use Test::More;
 
-#plan skip_all => 'Mixing SSL client and server sockets doesn\'t work';
+plan skip_all => 'MSWin32 does not have a proper fork()' if $^O eq 'MSWin32';
 
-BEGIN {	use_ok( 'POE::Component::Server::NRPE' ) };
+plan tests => 5;
+
+use_ok( 'POE::Component::Server::NRPE' );
 
 use Socket;
 use POE qw(Wheel::SocketFactory Filter::Stream Component::Client::NRPE);
