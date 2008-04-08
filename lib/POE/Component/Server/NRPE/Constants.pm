@@ -1,11 +1,14 @@
 package POE::Component::Server::NRPE::Constants;
 
-use strict;
-
 require Exporter;
+@ISA    = qw(Exporter);
+@EXPORT = qw(NRPE_STATE_OK NRPE_STATE_WARNING NRPE_STATE_CRITICAL NRPE_STATE_UNKNOWN);
 
-our @ISA    = qw(Exporter);
-our @EXPORT = qw(NRPE_STATE_OK NRPE_STATE_WARNING NRPE_STATE_CRITICAL NRPE_STATE_UNKNOWN);
+use strict;
+use warnings;
+use vars qw($VERSION);
+
+$VERSION = '0.08';
 
 use constant NRPE_STATE_OK 	 => 0;
 use constant NRPE_STATE_WARNING  => 1;

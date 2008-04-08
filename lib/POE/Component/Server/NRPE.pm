@@ -1,6 +1,7 @@
 package POE::Component::Server::NRPE;
 
 use strict;
+use warnings;
 use Socket;
 use Carp;
 use Net::Netmask;
@@ -9,7 +10,7 @@ use POE::Component::Server::NRPE::SSLify qw( Server_SSLify SSLify_Initialise );
 use POE::Component::Server::NRPE::Constants;
 use vars qw($VERSION);
 
-$VERSION='0.06';
+$VERSION='0.08';
 
 sub spawn {
   my $package = shift;
@@ -257,8 +258,8 @@ sub _accept_failed {
 
 sub _accept_client {
   my ($kernel,$self,$socket,$peeraddr,$peerport) = @_[KERNEL,OBJECT,ARG0..ARG2];
-  my $sockaddr = inet_ntoa( ( unpack_sockaddr_in ( getsockname $socket ) )[1] );
-  my $sockport = ( unpack_sockaddr_in ( getsockname $socket ) )[0];
+  my $sockaddr = inet_ntoa( ( unpack_sockaddr_in ( CORE::getsockname $socket ) )[1] );
+  my $sockport = ( unpack_sockaddr_in ( CORE::getsockname $socket ) )[0];
   $peeraddr = inet_ntoa( $peeraddr );
 
   return unless grep { $_->match( $peeraddr ) } @{ $self->{access} };
@@ -371,14 +372,16 @@ sub _stdout {
 sub _wheel_close {
   my ($self,$wheel_id) = @_[OBJECT,ARG0];
   my $wheel = delete $self->{wheels}->{ $wheel_id };
-  delete $self->{clients}->{ $wheel->{client_id} }->{cmd_id};
+  return unless $wheel;
+  delete $self->{clients}->{ $wheel->{client} }->{cmd_id};
   return;
 }
 
 sub _wheel_error {
   my ($self,$wheel_id) = @_[OBJECT,ARG3];
   my $wheel = delete $self->{wheels}->{ $wheel_id };
-  delete $self->{clients}->{ $wheel->{client_id} }->{cmd_id};
+  return unless $wheel;
+  delete $self->{clients}->{ $wheel->{client} }->{cmd_id};
   return;
 }
 
@@ -426,7 +429,7 @@ sub _conn_alarm {
 
 sub _sig_child {
   my ($kernel,$self,$signal,$pid,$status) = @_[KERNEL,OBJECT,ARG0..ARG2];
-  my $pid = delete $self->{pids}->{ $pid };
+  $pid = delete $self->{pids}->{ $pid };
   if ( $pid ) {
     $kernel->alarm_remove( $pid->{alarm_id} );
     my ( $return, $output );
@@ -437,6 +440,7 @@ sub _sig_child {
 	$output = 'NRPE: Unable to read output';
     }
     $output = $pid->{timed_out} if $pid->{timed_out};
+    $return = $status;
     $return = NRPE_STATE_UNKNOWN if $status < 0 or $status > 3;
     $self->_send_response( $pid->{client}, $return, $output );
   }
