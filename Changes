@@ -1,6 +1,9 @@
 POE::Component::Server::NRPE - Changelog
 ========================================
 
+0.10	Sun Feb  8 21:27:01 GMT 2009
+	- Refactored out all that hackery SSLify stuff.
+
 0.08	Tue Apr  8 12:09:34 BST 2008
 	- Kwalitee fixes.
 	- Number of bugs squashed as a result of the above.

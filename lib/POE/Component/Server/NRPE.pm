@@ -5,12 +5,13 @@ use warnings;
 use Socket;
 use Carp;
 use Net::Netmask;
+use Net::SSLeay qw(die_now);
 use POE qw(Wheel::SocketFactory Wheel::ReadWrite Wheel::Run Filter::Stream Filter::Line);
-use POE::Component::Server::NRPE::SSLify qw( Server_SSLify SSLify_Initialise );
+use POE::Component::SSLify qw(Server_SSLify);
 use POE::Component::Server::NRPE::Constants;
 use vars qw($VERSION);
 
-$VERSION='0.08';
+$VERSION = '0.10';
 
 sub spawn {
   my $package = shift;
@@ -225,7 +226,7 @@ sub _start {
       Reuse          => 'on',                # Lets the port be reused
   );
   if ( $self->{version} eq '2' and $self->{usessl} ) {
-	eval { SSLify_Initialise(); };
+	eval { $self->{_ctx} = _SSLify_Initialise(); };
 	if ($@) {
 	   warn "SSL initialisation failed: $@\n";
 	   $self->{usessl} = 0;
@@ -265,7 +266,7 @@ sub _accept_client {
   return unless grep { $_->match( $peeraddr ) } @{ $self->{access} };
 
   if ( $self->{version} == 2 and $self->{usessl} ) {
-	eval { $socket = Server_SSLify( $socket ) };
+	eval { $socket = Server_SSLify( $socket, $self->{_ctx} ) };
 	warn "Failed to SSLify the socket: $@\n" if $@;
   }
 
@@ -538,7 +539,20 @@ sub _crc32 {
     return $crc;
 }
 
-1;
+sub _SSLify_Initialise {
+  my $data = "-----BEGIN DH PARAMETERS-----\nMEYCQQD9eJtH5rywhI/PGD+RaFvEptXwGrqtjm4Jw+GSniG72OLThcOcb29iEIcp\nXgrpPtClVGHYs4lNZbpwFz1ufNnjAgEC\n-----END DH PARAMETERS-----\n";
+  my $ctx = Net::SSLeay::CTX_new() or die_now( "Failed to create SSL_CTX $!" );
+  Net::SSLeay::CTX_set_cipher_list( $ctx, 'ADH') or die_now( " Failed to set cipher list $!" );
+  my $bio = Net::SSLeay::BIO_new( Net::SSLeay::BIO_s_mem() ) or die_now( "Failed to create BIO: $!" );
+  my $retval = Net::SSLeay::BIO_write( $bio, $data );
+  my $dh = Net::SSLeay::PEM_read_bio_DHparams( $bio ) or die_now( "Failed to read DHparams: $!" );
+  Net::SSLeay::BIO_free( $bio );
+  Net::SSLeay::CTX_set_tmp_dh( $ctx, $dh ) or die_now( "Failed to set tmp DH: $!" );
+  Net::SSLeay::DH_free( $dh );
+  return $ctx;
+}
+
+'POE it';
 __END__
 
 =head1 NAME
