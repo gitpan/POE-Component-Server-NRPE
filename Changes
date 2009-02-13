@@ -1,6 +1,9 @@
 POE::Component::Server::NRPE - Changelog
 ========================================
 
+0.12	Fri Feb 13 11:18:51 GMT 2009
+	- Added LICENSE details.
+
 0.10	Sun Feb  8 21:27:01 GMT 2009
 	- Refactored out all that hackery SSLify stuff.
 

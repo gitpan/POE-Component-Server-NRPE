@@ -11,7 +11,7 @@ use POE::Component::SSLify qw(Server_SSLify);
 use POE::Component::Server::NRPE::Constants;
 use vars qw($VERSION);
 
-$VERSION = '0.10';
+$VERSION = '0.12';
 
 sub spawn {
   my $package = shift;
@@ -701,6 +701,12 @@ Chris C<BinGOs> Williams <chris@bingosnet.co.uk>
 
 This module uses code derived from L<http://www.stic-online.de/stic/html/nrpe-generic.html>
 Copyright (C) 2006, 2007 STIC GmbH, http://www.stic-online.de
+
+=head1 LICENSE
+
+Copyright (C) Chris Williams and STIC GmbH
+
+This module may be used, modified, and distributed under the same terms as Perl itself. Please see the license that came with your Perl distribution for details.
 
 =head1 SEE ALSO
 
