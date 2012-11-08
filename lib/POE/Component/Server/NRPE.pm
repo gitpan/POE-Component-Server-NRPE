@@ -1,4 +1,9 @@
 package POE::Component::Server::NRPE;
+{
+  $POE::Component::Server::NRPE::VERSION = '0.18';
+}
+
+#ABSTRACT: A POE Component implementation of NRPE Daemon.
 
 use strict;
 use warnings;
@@ -9,9 +14,6 @@ use Net::SSLeay qw(die_now);
 use POE qw(Wheel::SocketFactory Wheel::ReadWrite Wheel::Run Filter::Stream Filter::Line);
 use POE::Component::SSLify qw(Server_SSLify);
 use POE::Component::Server::NRPE::Constants;
-use vars qw($VERSION);
-
-$VERSION = '0.16';
 
 sub spawn {
   my $package = shift;
@@ -24,7 +26,7 @@ sub spawn {
 	next unless $acl->isa('Net::Netmask');
 	push @{ $opts{access} }, $acl;
   }
-  $opts{verstring} = __PACKAGE__ . ' ' . "v$VERSION" unless $opts{verstring};
+  $opts{verstring} = __PACKAGE__ . ' v' . $POE::Component::Server::NRPE::VERSION unless $opts{verstring};
   $opts{version} = 2 unless $opts{version} and $opts{version} eq '1';
   $opts{usessl} = 1 unless defined $opts{usessl} and $opts{usessl} eq '0';
   my $self = bless \%opts, $package;
@@ -180,7 +182,7 @@ sub return_result {
 sub _conn_exists {
   my ($self,$wheel_id) = @_;
   return 0 unless $wheel_id and defined $self->{clients}->{ $wheel_id };
-  return 1; 
+  return 1;
 }
 
 sub _disconnect {
@@ -210,7 +212,7 @@ sub _start {
   $self->{session_id} = $_[SESSION]->ID();
   if ( $self->{alias} ) {
 	$kernel->alias_set( $self->{alias} );
-  } 
+  }
   else {
 	$kernel->refcount_increment( $self->{session_id} => __PACKAGE__ );
   }
@@ -241,7 +243,7 @@ sub _shutdown {
   delete $self->{clients};
   delete $self->{wheels};
   delete $self->{pids};
-  $kernel->refcount_decrement( $_, __PACKAGE__ ) for 
+  $kernel->refcount_decrement( $_, __PACKAGE__ ) for
 	map { $self->{sess_cmds}->{$_}->{session} } keys %{ $self->{sess_cmds} };
   $kernel->alarm_remove_all();
   $kernel->alias_remove( $_ ) for $kernel->alias_list();
@@ -279,11 +281,11 @@ sub _accept_client {
   );
 
   return unless $wheel;
-  
+
   my $id = $wheel->ID();
-  $self->{clients}->{ $id } = 
-  { 
-				wheel    => $wheel, 
+  $self->{clients}->{ $id } =
+  {
+				wheel    => $wheel,
 				peeraddr => $peeraddr,
 				peerport => $peerport,
 				sockaddr => $sockaddr,
@@ -435,14 +437,15 @@ sub _sig_child {
     $kernel->alarm_remove( $pid->{alarm_id} );
     my ( $return, $output );
     if ( $pid->{output} ) {
-	$output = $pid->{output};
+	    $output = $pid->{output};
     }
     else {
-	$output = 'NRPE: Unable to read output';
+	    $output = 'NRPE: Unable to read output';
     }
     $output = $pid->{timed_out} if $pid->{timed_out};
-    $return = $status;
-    $return = NRPE_STATE_UNKNOWN if $status < 0 or $status > 3;
+    $return = $status >> 8;
+    $return = NRPE_STATE_UNKNOWN if $return < 0 or $return > 3;
+    $return = NRPE_STATE_UNKNOWN if $pid->{timed_out};
     $self->_send_response( $pid->{client}, $return, $output );
   }
   return $kernel->sig_handled();
@@ -553,32 +556,40 @@ sub _SSLify_Initialise {
 }
 
 'POE it';
+
 __END__
+
+=pod
 
 =head1 NAME
 
 POE::Component::Server::NRPE - A POE Component implementation of NRPE Daemon.
+
+=head1 VERSION
+
+version 0.18
 
 =head1 SYNOPSIS
 
   use strict;
   use POE;
   use POE::Component::Server::NRPE;
+  use POE::Component::Server::NRPE::Constants qw(NRPE_STATE_OK);
 
   my $port = 5666;
-  
+
   my $nrped = POE::Component::Server::NRPE->spawn(
 	port => $port;
   );
 
-  $nrped->add_command( command => meep, program => \&_meep );
+  $nrped->add_command( command => 'meep', program => \&_meep );
 
   $poe_kernel->run();
   exit 0;
 
   sub _meep {
-    print STDOUT "OK meep\n";
-    return 0;
+	print STDOUT "OK meep\n";
+	exit NRPE_STATE_OK;
   }
 
 =head1 DESCRIPTION
@@ -631,9 +642,14 @@ This will add a command that can be run. Takes a number of parameters:
   'program', the program to run. Can be a coderef, mandatory;
   'args', the command line arguments to pass to the above program, must be an arrayref;
 
-Returns 1 if successful, undef otherwise.
+The 'command' should behave like an NRPE plugin: It should print a
+status message to STDOUT and exit() with the test's outcome.
+POE::Component::Server::NRPE::Constants defines constants for the
+valid exit() values.
 
-=item del_command 
+add_command() eturns 1 if successful, undef otherwise.
+
+=item del_command
 
 Removes a previously defined command. Takes one argument, the previously defined label to remove.
 
@@ -663,7 +679,7 @@ Whenever clients request the given command, the component will send the indicate
   ARG0, a unique id of the client;
   ARG1, the context ( if any );
 
-Your session should then do any necessary processing and use C<return_result> event to return the status and output to the component. 
+Your session should then do any necessary processing and use C<return_result> event to return the status and output to the component.
 
 =item unregister_command
 
@@ -695,19 +711,6 @@ Due to problems with L<Net::SSLeay> mixing of client and server SSL is not encou
 
 Add a logging capability.
 
-=head1 AUTHOR
-
-Chris C<BinGOs> Williams <chris@bingosnet.co.uk>
-
-This module uses code derived from L<http://www.stic-online.de/stic/html/nrpe-generic.html>
-Copyright (C) 2006, 2007 STIC GmbH, http://www.stic-online.de
-
-=head1 LICENSE
-
-Copyright (C) Chris Williams and STIC GmbH
-
-This module may be used, modified, and distributed under the same terms as Perl itself. Please see the license that came with your Perl distribution for details.
-
 =head1 SEE ALSO
 
 L<POE>
@@ -715,5 +718,35 @@ L<POE>
 L<POE::Component::SSLify>
 
 L<http://www.nagios.org/>
+
+=head1 KUDOS
+
+This module uses code derived from L<http://www.stic-online.de/stic/html/nrpe-generic.html>
+Copyright (C) 2006, 2007 STIC GmbH, http://www.stic-online.de
+
+=head1 AUTHORS
+
+=over 4
+
+=item *
+
+Chris Williams <chris@bingosnet.co.uk>
+
+=item *
+
+Rocco Caputo <rcaputo@cpan.org>
+
+=item *
+
+Olivier Raginel <github@babar.us>
+
+=back
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2012 by Chris Williams, Rocco Caputo, Olivier Raginel and STIC GmbH.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut
